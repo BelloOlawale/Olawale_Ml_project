@@ -1,246 +1,186 @@
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import scipy as stats
+import os
+import joblib
+from imblearn.over_sampling import SMOTE
+save_path = r"C:\Users\OlawaleBello\Documents"
+os.makedirs(save_path, exist_ok=True)
+
 
 df = pd.read_csv(r"C:\Users\OlawaleBello\Documents\bank_data.csv")
 
+df.head()
+
+#drop the column Unnamed
+
+df.drop(columns=['Unnamed: 0'], errors='ignore', inplace=True)
+
+#getting the data types for the dataset
+
+
+df.dtypes
+
+# split table in categorcal and numnerical columns
+
+categorical_columns = df.select_dtypes(include=['object']).columns
+numerical_columns = df.select_dtypes(include=['int64', 'float64']).columns
+
+numerical_columns
+
+categorical_columns
+
+"""# Random forest Part"""
+
+from sklearn.preprocessing import LabelEncoder
+
+# Copy dataframe
+df_tree = df.copy()
+
+# Apply Label Encoding to categorical columns
+le = LabelEncoder()
+for col in categorical_columns:
+    df_tree[col] = le.fit_transform(df_tree[col])
+
+# Separate target variable
+target_col = 'y'
+X_tree = df_tree.drop(target_col, axis=1)
+y_tree = df_tree[target_col]
+
+#random forest
+
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score
 
 
-train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
-print(f"Train set: {train_set.shape}, Test set: {test_set.shape}")
 
-df_train = train_set.copy()
+df_tree.head()
 
-df['was_previously_contacted'] = df['pdays'].apply(lambda x: 0 if x == -1 else 1)
-df = pd.get_dummies(df, columns=['poutcome'], drop_first=True)
-df = pd.get_dummies(df, columns=['contact'], drop_first=True)
-df = pd.get_dummies(df, columns=['month'], drop_first=True)
-df = pd.get_dummies(df, columns=['education'], drop_first=True)
-df = df.drop('pdays', axis=1)
-df = df.drop('Unnamed: 0', axis=1)
+#split data
 
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
+X_train, X_test, y_train, y_test = train_test_split(X_tree, y_tree, test_size=0.2, random_state=42)
 
-y = df['y']
-X = df.drop('y', axis=1)
-y = y.apply(lambda x: 1 if x == 'yes' else 0)
+#train model
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_classifier.fit(X_train, y_train)
 
-numerical_features = X.select_dtypes(include=np.number).columns.tolist()
-categorical_features = X.select_dtypes(exclude=np.number).columns.tolist()
+# evaluate
+
+y_pred = rf_classifier.predict(X_test)
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+print("\nConfusion Matrix:\n", confusion_matrix(y_test, y_pred))
+
+#class-weight balanced to handle imbalaqnce
+
+
+rf_balanced = RandomForestClassifier(n_estimators=300, random_state=42, class_weight='balanced')
+
+#Train
+rf_balanced.fit(X_train, y_train)
+
+#predict
+
+y_pred_balanced = rf_balanced.predict(X_test)
+y_proba_balanced = rf_balanced.predict_proba(X_test)[:, 1]
+
+#evaluate
+
+print("Accuracy:", accuracy_score(y_test, y_pred_balanced))
+print("\nClassification Report:\n", classification_report(y_test, y_pred_balanced))
+print("\nConfusion Matrix:\n", confusion_matrix(y_test, y_pred_balanced))
+print("\nROC AUC Score:", roc_auc_score(y_test, y_proba_balanced))
+
+"""##Using SMOTE"""
+
+
+sm = SMOTE(random_state=42)
+X_res, y_res = sm.fit_resample(X_train, y_train)
+
+rf_smote = RandomForestClassifier(
+    n_estimators=300,
+    max_depth=None,
+    min_samples_split=4,
+    min_samples_leaf=2,
+    random_state=42,
+    n_jobs=-1
+)
+
+rf_smote.fit(X_res, y_res)
+
+y_pred_smote = rf_smote.predict(X_test)
+y_proba_smote = rf_smote.predict_proba(X_test)[:,1]
+
+print("Accuracy:", accuracy_score(y_test, y_pred_smote))
+print("ROC AUC:", roc_auc_score(y_test, y_proba_smote))
+print("\nClassification Report:\n", classification_report(y_test, y_pred_smote))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred_smote))
+
+"""## logistic regression"""
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+# Separate target column
+target_col = 'y'
+categorical_features = [col for col in categorical_columns if col != target_col]
+
+# One-hot encode
+df_log = pd.get_dummies(df, columns=categorical_features, drop_first=True)
+
+# Convert target to numeric (0/1)
+df_log[target_col] = df_log[target_col].map({'yes': 1, 'no': 0})
+
+# Split features & target
+X = df_log.drop(target_col, axis=1)
+y = df_log[target_col]
+
+X.head()
+
+# Scale numerical columns (important for logistic regression)
 scaler = StandardScaler()
-X[numerical_features] = scaler.fit_transform(X[numerical_features])
-print(X.head())
+X_scaled = scaler.fit_transform(X)
 
-
-scaler = StandardScaler()
-X[numerical_features] = scaler.fit_transform(X[numerical_features])
-
-numerical_transformer = StandardScaler()
-categorical_transformer = OneHotEncoder(handle_unknown='ignore') 
-
-umerical_features = X.select_dtypes(include=np.number).columns.tolist()
-categorical_features_to_encode = ['job', 'marital', 'default', 'housing', 'loan']
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numerical_transformer, numerical_features),
-        ('cat', categorical_transformer, categorical_features_to_encode)])
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-
-
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-
-X_train_processed = preprocessor.fit_transform(X_train)
-X_test_processed = preprocessor.transform(X_test)
-
-
-print("Shapes of the resulting processed datasets:")
-print("X_train_processed shape:", X_train_processed.shape)
-print("X_test_processed shape:", X_test_processed.shape)
-print("y_train shape:", y_train.shape)
-print("y_test shape:", y_test.shape)
-
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42, stratify=y)
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier\
-    
-log_reg_model = LogisticRegression(random_state=42)
-log_reg_model.fit(X_train_processed, y_train)
 
-rf_model = RandomForestClassifier(random_state=42)
-rf_model.fit(X_train_processed, y_train)
+# Use a single final logistic regression model with class balancing
+log_reg = LogisticRegression(
+    class_weight='balanced',     # penalize minority underrepresentation
+    solver='liblinear',          # stable for small/medium datasets
+    max_iter=1000,
+    random_state=42
+)
 
-dt_model = DecisionTreeClassifier(random_state=42)
-dt_model.fit(X_train_processed, y_train)
+# Train final logistic regression model
+log_reg.fit(X_train, y_train)
 
-print("Logistic Regression, Random Forest, and Decision Tree models have been trained successfully.")
+# Predict
+y_pred = log_reg.predict(X_test)
+y_proba = log_reg.predict_proba(X_test)[:, 1]
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+# Evaluate
+print("Accuracy:", log_reg.score(X_test, y_test))
+print("ROC AUC:", roc_auc_score(y_test, y_proba))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 
-#Evaluation and parameter tuning
-#Logistic Regression
-log_reg_pred = log_reg_model.predict(X_test_processed)
-log_reg_pred_proba = log_reg_model.predict_proba(X_test_processed)[:, 1] 
+import joblib
 
-log_reg_accuracy = accuracy_score(y_test, log_reg_pred)
-log_reg_precision = precision_score(y_test, log_reg_pred)
-log_reg_recall = recall_score(y_test, log_reg_pred)
-log_reg_f1 = f1_score(y_test, log_reg_pred)
-log_reg_roc_auc = roc_auc_score(y_test, log_reg_pred_proba)
-
-print("Logistic Regression Model Performance:")
-print(f"Accuracy: {log_reg_accuracy:.4f}")
-print(f"Precision: {log_reg_precision:.4f}")
-print(f"Recall: {log_reg_recall:.4f}")
-print(f"F1-score: {log_reg_f1:.4f}")
-print(f"ROC AUC: {log_reg_roc_auc:.4f}")
-print("-" * 30)
-
-rf_pred = rf_model.predict(X_test_processed)
-rf_pred_proba = rf_model.predict_proba(X_test_processed)[:, 1] # Get probability of the positive class
-
-rf_accuracy = accuracy_score(y_test, rf_pred)
-rf_precision = precision_score(y_test, rf_pred)
-rf_recall = recall_score(y_test, rf_pred) 
-rf_f1 = f1_score(y_test, rf_pred)
-rf_roc_auc = roc_auc_score(y_test, rf_pred_proba)
-
-print("Random Forest Model Performance:")
-print(f"Accuracy: {rf_accuracy:.4f}")
-print(f"Precision: {rf_precision:.4f}")
-print(f"Recall: {rf_recall:.4f}")
-print(f"F1-score: {rf_f1:.4f}")
-print(f"ROC AUC: {rf_roc_auc:.4f}")
-print("-" * 30)
-
-dt_pred = dt_model.predict(X_test_processed)
-dt_pred_proba = dt_model.predict_proba(X_test_processed)[:, 1] # Get probability of the positive class
-
-dt_accuracy = accuracy_score(y_test, dt_pred)
-dt_precision = precision_score(y_test, dt_pred)
-dt_recall = recall_score(y_test, dt_pred)
-dt_f1 = f1_score(y_test, dt_pred)
-dt_roc_auc = roc_auc_score(y_test, dt_pred_proba)
-
-print("Decision Tree Model Performance:")
-print(f"Accuracy: {dt_accuracy:.4f}")
-print(f"Precision: {dt_precision:.4f}")
-print(f"Recall: {dt_recall:.4f}")
-print(f"F1-score: {dt_f1:.4f}")
-print(f"ROC AUC: {dt_roc_auc:.4f}")
-
-from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-
-# Define the parameter grid for Logistic Regression
-log_reg_param_grid = {
-    'C': [0.001, 0.01, 0.1, 1, 10, 100],
-    'penalty': ['l1', 'l2'],
-    'solver': ['liblinear'] # 'liblinear' supports both 'l1' and 'l2' penalties
-}
-
-# Define the parameter grid for Random Forest
-rf_param_grid = {
-    'n_estimators': [100, 200, 500],
-    'max_depth': [None, 10, 20, 30],
-    'min_samples_split': [2, 5, 10]
-}
-#Instantiate Logistic Regression model
-log_reg = LogisticRegression(random_state=42)
-
-# Instantiate GridSearchCV for Logistic Regression
-log_reg_grid_search = GridSearchCV(estimator=log_reg, param_grid=log_reg_param_grid, cv=5, scoring='roc_auc', n_jobs=-1)
-
-# Fit GridSearchCV to the training data
-log_reg_grid_search.fit(X_train_processed, y_train)
-
-# Print the best parameters and best score
-print("Best parameters for Logistic Regression:")
-print(log_reg_grid_search.best_params_)
-print("\nBest cross-validation ROC AUC score for Logistic Regression:")
-print(log_reg_grid_search.best_score_)
-
-best_log_reg_model = log_reg_grid_search.best_estimator_
+# Save model
+# Save artifacts locally (project root)
+joblib.dump(log_reg, "logistic_regression_model.pkl")
+joblib.dump(scaler, "scaler.pkl")
+joblib.dump(list(X.columns), "model_columns.pkl")
 
 
-log_reg_tuned_pred = best_log_reg_model.predict(X_test_processed)
+print(f"✅ Model, scaler, and columns saved successfully to: {save_path} and project root.")
 
 
-log_reg_tuned_pred_proba = best_log_reg_model.predict_proba(X_test_processed)[:, 1]
 
-# Evaluate the tuned Logistic Regression model
-log_reg_tuned_accuracy = accuracy_score(y_test, log_reg_tuned_pred)
-log_reg_tuned_precision = precision_score(y_test, log_reg_tuned_pred)
-log_reg_tuned_recall = recall_score(y_test, log_reg_tuned_pred)
-log_reg_tuned_f1 = f1_score(y_test, log_reg_tuned_pred)
-log_reg_tuned_roc_auc = roc_auc_score(y_test, log_reg_tuned_pred_proba)
-
-print("Tuned Logistic Regression Model Performance on Test Set:")
-print(f"Accuracy: {log_reg_tuned_accuracy:.4f}")
-print(f"Precision: {log_reg_tuned_precision:.4f}")
-print(f"Recall: {log_reg_tuned_recall:.4f}")
-print(f"F1-score: {log_reg_tuned_f1:.4f}")
-print(f"ROC AUC: {log_reg_tuned_roc_auc:.4f}")
-
-rf = RandomForestClassifier(random_state=42)
-
-# Instantiate GridSearchCV for Random Forest
-rf_grid_search = GridSearchCV(estimator=rf, param_grid=rf_param_grid, cv=5, scoring='roc_auc', n_jobs=-1)
-
-# Fit GridSearchCV to the training data
-rf_grid_search.fit(X_train_processed, y_train)
-
-# Print the best parameters and best score
-print("Best parameters for Random Forest:")
-print(rf_grid_search.best_params_)
-print("\nBest cross-validation ROC AUC score for Random Forest:")
-print(rf_grid_search.best_score_)
-
-best_rf_model = rf_grid_search.best_estimator_
-
-# Make predictions on the test data
-rf_tuned_pred = best_rf_model.predict(X_test_processed)
-
-# Calculate predicted probabilities
-rf_tuned_pred_proba = best_rf_model.predict_proba(X_test_processed)[:, 1]
-
-# Evaluate the tuned Random Forest model
-rf_tuned_accuracy = accuracy_score(y_test, rf_tuned_pred)
-rf_tuned_precision = precision_score(y_test, rf_tuned_pred)
-rf_tuned_recall = recall_score(y_test, rf_tuned_pred)
-rf_tuned_f1 = f1_score(y_test, rf_tuned_pred)
-rf_tuned_roc_auc = roc_auc_score(y_test, rf_tuned_pred_proba)
-
-print("Tuned Random Forest Model Performance on Test Set:")
-print(f"Accuracy: {rf_tuned_accuracy:.4f}")
-print(f"Precision: {rf_tuned_precision:.4f}")
-print(f"Recall: {rf_tuned_recall:.4f}")
-print(f"F1-score: {rf_tuned_f1:.4f}")
-print(f"ROC AUC: {rf_tuned_roc_auc:.4f}")
-
-performance_comparison = pd.DataFrame({
-    'Model': ['Logistic Regression (Original)', 'Logistic Regression (Tuned)',
-              'Random Forest (Original)', 'Random Forest (Tuned)'],
-    'Accuracy': [log_reg_accuracy, log_reg_tuned_accuracy, rf_accuracy, rf_tuned_accuracy],
-    'Precision': [log_reg_precision, log_reg_tuned_precision, rf_precision, rf_tuned_precision],
-    'Recall': [log_reg_recall, log_reg_tuned_recall, rf_recall, rf_tuned_recall],
-    'F1-score': [log_reg_f1, log_reg_tuned_f1, rf_f1, rf_tuned_f1],
-    'ROC AUC': [log_reg_roc_auc, log_reg_tuned_roc_auc, rf_roc_auc, rf_tuned_roc_auc]
-})
-
-# Display the comparison DataFrame
-display(performance_comparison)
 
