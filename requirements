@@ -2,4 +2,316 @@ pandas
 numpy
 matplotlib
 seaborn
-scikit learn
+scikit-learn
+streamlit
+
+
+import os
+from pathlib import Path
+import pandas as pd
+import numpy as np
+import joblib
+import streamlit as st
+
+
+# Determine paths relative to this file (prefer project files)
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_FILE = BASE_DIR / "logistic_regression_model.pkl"
+SCALER_FILE = BASE_DIR / "scaler.pkl"
+MODEL_COLUMNS_FILE = BASE_DIR / "model_columns.pkl"
+
+# Load the saved model and scaler with graceful errors
+model = None
+scaler = None
+model_columns = None
+
+def try_load(path: Path):
+    try:
+        if path.exists():
+            return joblib.load(str(path))
+    except Exception as e:
+        # re-raise to handle above
+        raise
+    return None
+
+try:
+    model = try_load(MODEL_FILE)
+    scaler = try_load(SCALER_FILE)
+    model_columns = try_load(MODEL_COLUMNS_FILE)
+except Exception as e:
+    # we'll show a message in the app below
+    model = None
+    scaler = None
+    model_columns = None
+
+
+
+
+
+
+# --- Page setup ---
+st.set_page_config(page_title="Bank Subscription Prediction App", layout="centered")
+st.title("💰 Bank Marketing Subscription Prediction")
+st.markdown("""
+This app predicts whether a customer is **likely to subscribe** to a term deposit
+based on demographic and campaign details.
+""")
+
+# --- Collect user input ---
+st.header("Customer Information")
+
+# Numerical inputs
+age = st.number_input("Age", min_value=18, max_value=100, value=30)
+balance = st.number_input("Account Balance (€)", value=1000)
+duration = st.number_input("Last Contact Duration (seconds)", value=100)
+campaign = st.number_input("Number of Contacts During Campaign", min_value=1, value=2)
+pdays = st.number_input("Days Since Last Contact (-1 means never contacted)", value=-1)
+previous = st.number_input("Number of Previous Contacts", value=0)
+
+# Categorical inputs
+job = st.selectbox("Job", [
+    "admin.", "blue-collar", "entrepreneur", "housemaid", "management",
+    "retired", "self-employed", "services", "student", "technician", "unemployed"
+])
+marital = st.selectbox("Marital Status", ["single", "married", "divorced"])
+education = st.selectbox("Education", ["primary", "secondary", "tertiary", "unknown"])
+default = st.selectbox("Default on Credit?", ["no", "yes"])
+housing = st.selectbox("Housing Loan?", ["no", "yes"])
+loan = st.selectbox("Personal Loan?", ["no", "yes"])
+contact = st.selectbox("Contact Communication Type", ["cellular", "telephone"])
+month = st.selectbox("Last Contact Month", [
+    "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"
+])
+poutcome = st.selectbox("Outcome of Previous Marketing Campaign", ["success", "failure", "nonexistent"])
+
+# --- One-hot encoding manually ---
+input_data = pd.DataFrame({
+    'age': [age],
+    'balance': [balance],
+    'duration': [duration],
+    'campaign': [campaign],
+    'pdays': [pdays],
+    'previous': [previous],
+    'job': [job],
+    'marital': [marital],
+    'education': [education],
+    'default': [default],
+    'housing': [housing],
+    'loan': [loan],
+    'contact': [contact],
+    'month': [month],
+    'poutcome': [poutcome]
+})
+
+# Convert categorical variables using same method as training
+input_encoded = pd.get_dummies(input_data, drop_first=True)
+
+# If we loaded model columns, align the input to that set of columns
+if model_columns is not None:
+    # model_columns might be a list-like stored in the pickle
+    try:
+        input_encoded = input_encoded.reindex(columns=list(model_columns), fill_value=0)
+    except Exception:
+        input_encoded = input_encoded.reindex(columns=model_columns, fill_value=0)
+
+# Ensure model and scaler are loaded before transforming/predicting
+if scaler is None or model is None:
+    st.error("Model files not found or failed to load. Make sure 'logistic_regression_model.pkl', 'scaler.pkl', and 'model_columns.pkl' exist in the project folder.")
+    st.stop()
+
+# Scale the data
+try:
+    scaled_input = scaler.transform(input_encoded)
+except Exception as e:
+    st.error(f"Failed to scale input data: {e}")
+    st.stop()
+
+# --- Prediction ---
+if st.button("🔍 Predict"):
+    try:
+        prediction = model.predict(scaled_input)
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+        st.stop()
+
+    # Try to get probability in a safe way
+    probability = None
+    if hasattr(model, "predict_proba"):
+        try:
+            proba = model.predict_proba(scaled_input)
+            # assume binary classification and take prob of '1'
+            if proba.ndim == 2 and proba.shape[1] >= 2:
+                probability = proba[0][1]
+        except Exception:
+            probability = None
+
+    if prediction is not None and len(prediction) > 0:
+        if int(prediction[0]) == 1:
+            st.success("The model predicts the customer **WILL subscribe** to a term deposit.")
+        else:
+            st.info("The model predicts the customer **will NOT subscribe**.")
+
+    if probability is not None:
+        st.metric("Prediction Probability", f"{probability*100:.2f}%")
+    else:
+        st.write("Probability not available for this model.")
+
+
+st.markdown("---")
+st.markdown("Developed by **Olawale Bello** | Data Science Intern, Wragby Business Solutions")
+
+
+
+import os
+from pathlib import Path
+import pandas as pd
+import numpy as np
+import joblib
+import streamlit as st
+
+
+# Determine paths relative to this file (prefer project files)
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_FILE = BASE_DIR / "logistic_regression_model.pkl"
+SCALER_FILE = BASE_DIR / "scaler.pkl"
+MODEL_COLUMNS_FILE = BASE_DIR / "model_columns.pkl"
+
+# Load the saved model and scaler with graceful errors
+model = None
+scaler = None
+model_columns = None
+
+def try_load(path: Path):
+    try:
+        if path.exists():
+            return joblib.load(str(path))
+    except Exception as e:
+        # re-raise to handle above
+        raise
+    return None
+
+try:
+    model = try_load(MODEL_FILE)
+    scaler = try_load(SCALER_FILE)
+    model_columns = try_load(MODEL_COLUMNS_FILE)
+except Exception as e:
+    # we'll show a message in the app below
+    model = None
+    scaler = None
+    model_columns = None
+
+
+
+
+
+
+# --- Page setup ---
+st.set_page_config(page_title="Bank Subscription Prediction App", layout="centered")
+st.title("💰 Bank Marketing Subscription Prediction")
+st.markdown("""
+This app predicts whether a customer is **likely to subscribe** to a term deposit
+based on demographic and campaign details.
+""")
+
+# --- Collect user input ---
+st.header("Customer Information")
+
+# Numerical inputs
+age = st.number_input("Age", min_value=18, max_value=100, value=30)
+balance = st.number_input("Account Balance (€)", value=1000)
+duration = st.number_input("Last Contact Duration (seconds)", value=100)
+campaign = st.number_input("Number of Contacts During Campaign", min_value=1, value=2)
+pdays = st.number_input("Days Since Last Contact (-1 means never contacted)", value=-1)
+previous = st.number_input("Number of Previous Contacts", value=0)
+
+# Categorical inputs
+job = st.selectbox("Job", [
+    "admin.", "blue-collar", "entrepreneur", "housemaid", "management",
+    "retired", "self-employed", "services", "student", "technician", "unemployed"
+])
+marital = st.selectbox("Marital Status", ["single", "married", "divorced"])
+education = st.selectbox("Education", ["primary", "secondary", "tertiary", "unknown"])
+default = st.selectbox("Default on Credit?", ["no", "yes"])
+housing = st.selectbox("Housing Loan?", ["no", "yes"])
+loan = st.selectbox("Personal Loan?", ["no", "yes"])
+contact = st.selectbox("Contact Communication Type", ["cellular", "telephone"])
+month = st.selectbox("Last Contact Month", [
+    "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"
+])
+poutcome = st.selectbox("Outcome of Previous Marketing Campaign", ["success", "failure", "nonexistent"])
+
+# --- One-hot encoding manually ---
+input_data = pd.DataFrame({
+    'age': [age],
+    'balance': [balance],
+    'duration': [duration],
+    'campaign': [campaign],
+    'pdays': [pdays],
+    'previous': [previous],
+    'job': [job],
+    'marital': [marital],
+    'education': [education],
+    'default': [default],
+    'housing': [housing],
+    'loan': [loan],
+    'contact': [contact],
+    'month': [month],
+    'poutcome': [poutcome]
+})
+
+# Convert categorical variables using same method as training
+input_encoded = pd.get_dummies(input_data, drop_first=True)
+
+# If we loaded model columns, align the input to that set of columns
+if model_columns is not None:
+    # model_columns might be a list-like stored in the pickle
+    try:
+        input_encoded = input_encoded.reindex(columns=list(model_columns), fill_value=0)
+    except Exception:
+        input_encoded = input_encoded.reindex(columns=model_columns, fill_value=0)
+
+# Ensure model and scaler are loaded before transforming/predicting
+if scaler is None or model is None:
+    st.error("Model files not found or failed to load. Make sure 'logistic_regression_model.pkl', 'scaler.pkl', and 'model_columns.pkl' exist in the project folder.")
+    st.stop()
+
+# Scale the data
+try:
+    scaled_input = scaler.transform(input_encoded)
+except Exception as e:
+    st.error(f"Failed to scale input data: {e}")
+    st.stop()
+
+# --- Prediction ---
+if st.button("🔍 Predict"):
+    try:
+        prediction = model.predict(scaled_input)
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+        st.stop()
+
+    # Try to get probability in a safe way
+    probability = None
+    if hasattr(model, "predict_proba"):
+        try:
+            proba = model.predict_proba(scaled_input)
+            # assume binary classification and take prob of '1'
+            if proba.ndim == 2 and proba.shape[1] >= 2:
+                probability = proba[0][1]
+        except Exception:
+            probability = None
+
+    if prediction is not None and len(prediction) > 0:
+        if int(prediction[0]) == 1:
+            st.success("The model predicts the customer **WILL subscribe** to a term deposit.")
+        else:
+            st.info("The model predicts the customer **will NOT subscribe**.")
+
+    if probability is not None:
+        st.metric("Prediction Probability", f"{probability*100:.2f}%")
+    else:
+        st.write("Probability not available for this model.")
+
+
+st.markdown("---")
+st.markdown("Developed by **Olawale Bello** | Data Science Intern, Wragby Business Solutions")

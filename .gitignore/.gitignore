@@ -1,0 +1,25 @@
+# Ignore Python virtual environments
+venv/
+venv_local/
+
+# Ignore Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore model artifacts
+*.pkl
+*.joblib
+
+# Ignore environment and config files
+.env
+*.cfg
+*.ini
+
+# Ignore system and IDE files
+.DS_Store
+.vscode/
